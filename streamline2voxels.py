@@ -16,52 +16,98 @@ def intersection_one_voxel(x0, y0, z0,
                              (a - x0) / (x1 - x0),
                              (b - y0) / (y1 - y0),
                              (c - z0) / (z1 - z0)])
-    
+
     intersection = less_than.min(0) > greater_than.max(0)
     print("Intersection? %s" % intersection)
     return intersection
 
 
-def intersection_voxels(p0, p1, v, l):
+def intersection_segment_voxel(p0, p1, v, l):
+    less_than = (v + l - p0) / (p1 - p0)
+    greater_than = (v - p0) / (p1 - p0)
+    lt = less_than.copy()
+    gt = greater_than.copy()
+    tmp = (p1 - p0) < 0
+    lt[tmp] = greater_than[tmp]
+    gt[tmp] = less_than[tmp]
+    intersection = gt.clip(min=0.0).max() < lt.clip(max=1.0).min()
+    return intersection
+
+
+def intersection_segment_voxels(p0, p1, v, l):
     """Compute which voxels v of size l are intersected by the segment [p0, p1].
     """
     less_than = (v + l - p0) / (p1 - p0)
     greater_than = (v - p0) / (p1 - p0)
-    less_than[:, (p1 - p0) < 0], greater_than[:, (p1 - p0) < 0] = greater_than[:, (p1 - p0) < 0], less_than[:, (p1 - p0) < 0]
-    intersection = greater_than.clip(min=0.0).max(1) < less_than.clip(max=1.0).min(1)
+    lt = less_than.copy()
+    gt = greater_than.copy()
+    tmp = (p1 - p0) < 0
+    lt[:, tmp] = greater_than[:, tmp]
+    gt[:, tmp] = less_than[:, tmp]
+    intersection = gt.clip(min=0.0).max(1) < lt.clip(max=1.0).min(1)
     return intersection
+
 
 def intersection_segments_voxels(p0, p1, v, l):
     """Compute which voxels v of size l are intersected by the segmentS [p0, p1].
     """
     less_than = ((v + l)[:, :, None] + p0) / (p1 - p0)
     greater_than = (v[:, :, None] - p0) / (p1 - p0)
-    less_than[:, (p1 - p0) < 0], greater_than[:, (p1 - p0) < 0] = greater_than[:, (p1 - p0) < 0], less_than[:, (p1 - p0) < 0]
+    lt = less_than.copy()
+    gt = greater_than.copy()
+    tmp = (p1 - p0) < 0
+    lt[:, tmp, :] = greater_than[:, tmp, :]
+    gt[:, tmp, :] = less_than[:, tmp, :]
     intersection = greater_than.clip(min=0.0).max(1) < less_than.clip(max=1.0).min(1)
     return intersection.any(1)
-
-
-def streamlines2voxels(s, l):
-    """Compute the voxels of size l of a streamline. ASSUMPTION: they are
-    in the same reference system!
-    """
-    p0 = s[:-1].T
-    p1 = s[1:].T
-    v = ndim_grid(s.min(0), s.max(0))
-    return v[intersection_segments_voxels(p0, p1, v, l)]
 
 
 def intersection_segments_voxels_slow(p0, p1, v, l):
     """Non-vectorized code equivalent to intersection_segments_voxels().
     """
-    voxels = []
+    intersection = np.zeros(v.shape[0], dtype=np.bool)
     for i in range(len(p0)):
-        intersection = intersection_voxels(p0[i], p1[i], v, l)
-        # print(v[intersection])
-        voxels += [tuple(vv) for vv in v[intersection]]
+        intersection += intersection_segment_voxels(p0[i], p1[i], v, l)
 
-    voxels = set(voxels)
-    return voxels
+    return intersection
+
+
+def streamline2voxels_slow(s, l):
+    """Compute the voxels of size l of a streamline. ASSUMPTION: they are
+    in the same reference system!
+    """
+    p0 = s[:-1]
+    p1 = s[1:]
+    v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
+    intersection = np.zeros(len(v), dtype=np.bool)
+    for i in range(p0.shape[0]):
+        for j, voxel in enumerate(v):
+            intersection[i] += intersection_segment_voxel(p0[i], p1[i], voxel, l)
+
+    return v[intersection]
+
+
+def streamline2voxels(s, l):
+    p0 = s[:-1]
+    p1 = s[1:]
+    v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
+    intersection = np.zeros(len(v), dtype=np.bool)
+    for i in range(p0.shape[0]):
+        intersection += intersection_segment_voxels(p0[i], p1[i], v, l)
+
+    return v[intersection]
+
+
+def streamline2voxels_fast(s, l):
+    """Compute the voxels of size l of a streamline. ASSUMPTION: they are
+    in the same reference system!
+    """
+    # p0 = np.atleast_2d(s[:-1]).T
+    # p1 = np.atleast_2d(s[1:]).T
+    p0 = s[:-1]
+    p1 = s[1:]
+    v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
+    return v[intersection_segments_voxels_slow(p0, p1, v, l)]
 
 
 def ndim_grid(start,stop):
@@ -73,7 +119,7 @@ def ndim_grid(start,stop):
     ndims = len(start)
 
     # List of ranges across all dimensions
-    L = [np.arange(start[i],stop[i]) for i in range(ndims)]
+    L = [np.arange(start[i]-1,stop[i]+1) for i in range(ndims)]
 
     # Finally use meshgrid to form all combinations corresponding to all 
     # dimensions and stack them as M x ndims array
@@ -182,4 +228,11 @@ if __name__ == '__main__':
     intersection = greater_than.clip(min=0.0).max(1) < less_than.clip(max=1.0).min(1)
     print(v[intersection.any(1)])
 
+
     
+    p0 = np.atleast_2d(np.array([3.5, 0.5, 0.5])).T
+    p1 = np.atleast_2d(np.array([0.5, 3.5, 3.5])).T
+    v = ndim_grid([0, 0, 0], [5, 5, 5])
+    l = np.array([1, 1, 1])
+    intersection = intersection_segments_voxels(p0, p1, v, l)
+    print(v[intersection])
