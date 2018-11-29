@@ -19,6 +19,52 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 
+def ndim_grid(start,stop):
+    """Generate all voxel coordinates between vector start, e.g. [0,0,0],
+    and vector stop, e.g. [10,10,10].
+    adapted from https://stackoverflow.com/questions/38170188/generate-a-n-dimensional-array-of-coordinates-in-numpy
+    """
+    # Set number of dimensions
+    ndims = len(start)
+
+    # List of ranges across all dimensions
+    L = [np.arange(start[i],stop[i]) for i in range(ndims)]
+
+    # Finally use meshgrid to form all combinations corresponding to all
+    # dimensions and stack them as M x ndims array
+    return np.hstack((np.meshgrid(*L))).swapaxes(0,1).reshape(ndims,-1).T
+
+
+def voxel_superset(s):
+    """Superset in voxels of a streamline s.
+    """
+    # return ndim_grid(np.trunc(s.min(0)) - 1, np.trunc(s.max(0)) + 1)
+    return ndim_grid(np.round(s.min(0)) - 1, np.round(s.max(0)) + 1)
+
+
+def voxel_superset_sphere(s, radius=2.0):
+    """Superset in voxels of a streamline s as spheres of voxels around
+    each point of the streamline.
+    """
+    v = voxel_superset(s)
+    kdt = cKDTree(v)
+    superset = v[np.unique(np.concatenate(kdt.query_ball_point(s, r=radius)))]
+    return superset
+
+
+def voxel_superset_cube(s, grid_size=2):
+    """Superset in voxels of a streamline s as cubes of voxels around each
+    point of the streamline.
+    """
+    sv = np.round(s)
+    # sv = np.vstack({tuple(row) for row in sv})
+    cube = ndim_grid(-np.ones(s.shape[1]) * grid_size,
+                     np.ones(s.shape[1]) * (grid_size + 1))
+    superset = np.vstack([cube + sv_i for sv_i in sv])
+    superset = np.vstack({tuple(row) for row in superset})
+    return superset
+
+
 def intersection_segment_voxel_basic(p0, p1, v, l_2):
     """Basic algorithm.
     """
@@ -55,9 +101,9 @@ def intersection_segment_voxel_basic(p0, p1, v, l_2):
     return intersection
 
 
-def intersection_segment_voxel(p0, p1, v, l_2):
+def intersection_segment_voxel(p0, p1, v, l_2, eps=1.0e-10):
     tmp = p1 - p0
-    # tmp[tmp == 0.0] = 1.0e-9
+    tmp[tmp == 0.0] = eps
     less_than = (v + l_2 - p0) / tmp
     greater_than = (v - l_2 - p0) / tmp
     lt = less_than.copy()
@@ -69,11 +115,11 @@ def intersection_segment_voxel(p0, p1, v, l_2):
     return intersection
 
 
-def intersection_segment_voxels(p0, p1, v, l_2):
+def intersection_segment_voxels(p0, p1, v, l_2, eps=1.0e-10):
     """Compute which voxels v of size l are intersected by the segment [p0, p1].
     """
     tmp = p1 - p0
-    # tmp[tmp == 0.0] = 1.0e-9
+    tmp[tmp == 0.0] = eps
     lt = (v + l_2 - p0) / tmp
     gt = (v - l_2 - p0) / tmp
     tmp = (p1 - p0) < 0
@@ -85,13 +131,14 @@ def intersection_segment_voxels(p0, p1, v, l_2):
     return intersection
 
 
-def intersection_segments_voxels(p0, p1, v, l_2):
+def intersection_segments_voxels(p0, p1, v, l_2, eps=1.0e-10):
     """Compute which voxels v of size l are intersected by the segmentS
     [p0, p1].
 
     Experimental. Memory hungry. Not really fast.
     """
     tmp = (p1 - p0).T
+    tmp[tmp == 0.0] = eps
     lt = ((v + l_2)[:, :, None] - p0.T) / tmp
     gt = ((v - l_2)[:, :, None] - p0.T) / tmp
     tmp = ((p1 - p0) < 0).T
@@ -116,7 +163,7 @@ def intersection_segments_voxels_slow(p0, p1, v, l_2):
 def streamline2voxels_basic(s, l_2):
     p0 = s[:-1]
     p1 = s[1:]
-    v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
+    v = voxel_superset(s)
     intersection = np.zeros(len(v), dtype=np.bool)
     for i in range(p0.shape[0]):
         for j, voxel in enumerate(v):
@@ -128,7 +175,7 @@ def streamline2voxels_basic(s, l_2):
 def streamline2voxels_slow(s, l_2):
     p0 = s[:-1]
     p1 = s[1:]
-    v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
+    v = voxel_superset(s)
     intersection = np.zeros(len(v), dtype=np.bool)
     for i in range(p0.shape[0]):
         for j, voxel in enumerate(v):
@@ -140,7 +187,7 @@ def streamline2voxels_slow(s, l_2):
 def streamline2voxels(s, l_2):
     p0 = s[:-1]
     p1 = s[1:]
-    v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
+    v = voxel_superset_sphere(s)
     intersection = np.zeros(len(v), dtype=np.bool)
     for i in range(p0.shape[0]):
         intersection += intersection_segment_voxels(p0[i], p1[i], v, l_2)
@@ -155,26 +202,19 @@ def streamline2voxels_fast(s, l_2):
     # p1 = np.atleast_2d(s[1:]).T
     p0 = s[:-1]
     p1 = s[1:]
-    v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
-    kdt = cKDTree(v)
-    vv = v[np.unique(np.concatenate(kdt.query_ball_point(s, r=2.0)))]
-    return vv[intersection_segments_voxels(p0, p1, vv, l_2)]
+    v = voxel_superset_sphere(s, radius=5)
+    return v[intersection_segments_voxels(p0, p1, v, l_2)]
 
 
-def ndim_grid(start,stop):
-    """Generate all voxel coordinates between vector start, e.g. [0,0,0],
-    and vector stop, e.g. [10,10,10].
-    adapted from https://stackoverflow.com/questions/38170188/generate-a-n-dimensional-array-of-coordinates-in-numpy
+def streamline2voxels_faster(s, l_2):
+    """Experimental. Memory hungry.
     """
-    # Set number of dimensions
-    ndims = len(start)
-
-    # List of ranges across all dimensions
-    L = [np.arange(start[i]-1,stop[i]+1) for i in range(ndims)]
-
-    # Finally use meshgrid to form all combinations corresponding to all
-    # dimensions and stack them as M x ndims array
-    return np.hstack((np.meshgrid(*L))).swapaxes(0,1).reshape(ndims,-1).T
+    # p0 = np.atleast_2d(s[:-1]).T
+    # p1 = np.atleast_2d(s[1:]).T
+    p0 = s[:-1]
+    p1 = s[1:]
+    v = voxel_superset_cube(s)
+    return v[intersection_segments_voxels(p0, p1, v, l_2)]
 
 
 if __name__ == '__main__':
