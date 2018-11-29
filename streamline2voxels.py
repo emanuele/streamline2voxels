@@ -1,23 +1,26 @@
-"""Solution of the question whether a 3D segment with ending points p0
-and p1 intersects or not a voxel with coordinates v and sides l.
+"""Exact Solution to the question whether a 3D segment with ending
+points p0 and p1 intersects or not a voxel with coordinates v and
+sides l.
 
 This solution is obtained by reducing the system of equations and
-inequalities given by the segment ((x,y,z = t(p1 - p0) + p, 0<=t<1)
-and the boundary conditions of the voxel (v-l/2 <= (x,y,z) < v+l/2).
+inequalities given by the segment, i.e. (x,y,z = t(p1 - p0) + p,
+0<=t<1, and the boundary conditions of the voxel, i.e. v-l/2 <=
+(x,y,z) < v+l/2.
 
 The assumption is that voxel and the segment are in the same reference
-system. Moreover, the "origin" of the voxel is in its center. In order
-to use one corner as origin, it is just a slight change to the code,
-e.g. v <= (x,y,z) < v+l.
+system. Moreover, the "origin" of the voxel is assumed to be in its
+center. Alternatively, in order to use one corner as origin, it is
+just a slight change to the code, e.g. v <= (x,y,z) < v+l.
 
 """
 
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 
 def intersection_segment_voxel_basic(p0, p1, v, l_2):
-    """
+    """Basic algorithm.
     """
     x0, y0, z0 = p0
     x1, y1, z1 = p1
@@ -73,7 +76,7 @@ def intersection_segment_voxels(p0, p1, v, l_2):
     # tmp[tmp == 0.0] = 1.0e-9
     lt = (v + l_2 - p0) / tmp
     gt = (v - l_2 - p0) / tmp
-    tmp = ((p1 - p0) < 0).T
+    tmp = (p1 - p0) < 0
     tmp1 = lt[:, tmp].copy()
     tmp2 = gt[:, tmp].copy()
     lt[:, tmp] = tmp2
@@ -86,6 +89,7 @@ def intersection_segments_voxels(p0, p1, v, l_2):
     """Compute which voxels v of size l are intersected by the segmentS
     [p0, p1].
 
+    Experimental. Memory hungry. Not really fast.
     """
     tmp = (p1 - p0).T
     lt = ((v + l_2)[:, :, None] - p0.T) / tmp
@@ -110,9 +114,6 @@ def intersection_segments_voxels_slow(p0, p1, v, l_2):
 
 
 def streamline2voxels_basic(s, l_2):
-    """Compute the voxels of size l of a streamline. ASSUMPTION: they are
-    in the same reference system!
-    """
     p0 = s[:-1]
     p1 = s[1:]
     v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
@@ -125,9 +126,6 @@ def streamline2voxels_basic(s, l_2):
 
 
 def streamline2voxels_slow(s, l_2):
-    """Compute the voxels of size l of a streamline. ASSUMPTION: they are
-    in the same reference system!
-    """
     p0 = s[:-1]
     p1 = s[1:]
     v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
@@ -151,15 +149,16 @@ def streamline2voxels(s, l_2):
 
 
 def streamline2voxels_fast(s, l_2):
-    """Compute the voxels of size l of a streamline. ASSUMPTION: they are
-    in the same reference system!
+    """Experimental. Memory hungry.
     """
     # p0 = np.atleast_2d(s[:-1]).T
     # p1 = np.atleast_2d(s[1:]).T
     p0 = s[:-1]
     p1 = s[1:]
     v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
-    return v[intersection_segments_voxels(p0, p1, v, l_2)]
+    kdt = cKDTree(v)
+    vv = v[np.unique(np.concatenate(kdt.query_ball_point(s, r=2.0)))]
+    return vv[intersection_segments_voxels(p0, p1, vv, l_2)]
 
 
 def ndim_grid(start,stop):
