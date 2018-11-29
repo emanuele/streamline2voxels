@@ -7,7 +7,7 @@ if __name__ == '__main__':
     filename = 'sub-100206_var-FNAL_tract.trk'
     data = nib.streamlines.load(filename)
     streamlines = data.streamlines
-    for i in range(100, 200):
+    for i in range(100):
         s = streamlines[i]
         print(i, len(s))
         l = np.ones(3)
