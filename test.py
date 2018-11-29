@@ -11,10 +11,11 @@ if __name__ == '__main__':
         s = streamlines[i]
         print(i, len(s))
         l = np.ones(3)
-        v0 = streamline2voxels_basic(s, l)
-        v1 = streamline2voxels_slow(s, l)
-        v2 = streamline2voxels(s, l)
-        v3 = streamline2voxels_fast(s, l)
+        l_2 = l / 2.0
+        v0 = streamline2voxels_basic(s, l_2)
+        v1 = streamline2voxels_slow(s, l_2)
+        v2 = streamline2voxels(s, l_2)
+        v3 = streamline2voxels_fast(s, l_2)
         assert((v0 == v1).all())
         assert((v0 == v2).all())
         assert((v0 == v3).all())
