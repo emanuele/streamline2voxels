@@ -1,7 +1,24 @@
+"""Solution of the question whether a 3D segment with ending points p0
+and p1 intersects or not a voxel with coordinates v and sides l.
+
+This solution is obtained by reducing the system of equations and
+inequalities given by the segment ((x,y,z = t(p1 - p0) + p, 0<=t<1)
+and the boundary conditions of the voxel (v <= (x,y,z) < v+l).
+
+The assumption is that voxel and the segment are in the same reference
+system. Moreover, the "origin" of the voxel are in one corner, not in
+the center. Using the center is just a slight change to the code,
+basically v-l/2 <= (x,y,z) < v+l/2.
+
+"""
+
+
 import numpy as np
 
 
 def intersection_segment_voxel_basic(p0, p1, v, l):
+    """
+    """
     x0, y0, z0 = p0
     x1, y1, z1 = p1
     a, b, c = v
@@ -21,14 +38,12 @@ def intersection_segment_voxel_basic(p0, p1, v, l):
              (z1 - z0)]
 
     for bl, bg, sign in zip(bounds_less, bounds_greater, signs):
-        if sign > 0:
+        if sign >= 0:
             less_than.append(bl)
             greater_than.append(bg)
-        elif sign < 0:
+        else:
             less_than.append(bg)
             greater_than.append(bl)
-        else:
-            pass
 
     less_than = np.array(less_than)
     greater_than = np.array(greater_than)
@@ -38,8 +53,10 @@ def intersection_segment_voxel_basic(p0, p1, v, l):
 
 
 def intersection_segment_voxel(p0, p1, v, l):
-    less_than = (v + l - p0) / (p1 - p0)
-    greater_than = (v - p0) / (p1 - p0)
+    tmp = p1 - p0
+    # tmp[tmp == 0.0] = 1.0e-9
+    less_than = (v + l - p0) / tmp
+    greater_than = (v - p0) / tmp
     lt = less_than.copy()
     gt = greater_than.copy()
     tmp = (p1 - p0) < 0
@@ -52,8 +69,10 @@ def intersection_segment_voxel(p0, p1, v, l):
 def intersection_segment_voxels(p0, p1, v, l):
     """Compute which voxels v of size l are intersected by the segment [p0, p1].
     """
-    less_than = (v + l - p0) / (p1 - p0)
-    greater_than = (v - p0) / (p1 - p0)
+    tmp = p1 - p0
+    # tmp[tmp == 0.0] = 1.0e-9
+    less_than = (v + l - p0) / tmp
+    greater_than = (v - p0) / tmp
     lt = less_than.copy()
     gt = greater_than.copy()
     tmp = (p1 - p0) < 0
@@ -66,14 +85,15 @@ def intersection_segment_voxels(p0, p1, v, l):
 def intersection_segments_voxels(p0, p1, v, l):
     """Compute which voxels v of size l are intersected by the segmentS [p0, p1].
     """
-    less_than = ((v + l)[:, :, None] + p0) / (p1 - p0)
-    greater_than = (v[:, :, None] - p0) / (p1 - p0)
+    tmp = (p1 - p0).T
+    less_than = ((v + l)[:, :, None] - p0.T) / tmp
+    greater_than = (v[:, :, None] - p0.T) / tmp
     lt = less_than.copy()
     gt = greater_than.copy()
-    tmp = (p1 - p0) < 0
-    lt[:, tmp, :] = greater_than[:, tmp, :]
-    gt[:, tmp, :] = less_than[:, tmp, :]
-    intersection = greater_than.clip(min=0.0).max(1) < less_than.clip(max=1.0).min(1)
+    tmp = ((p1 - p0) < 0).T
+    lt[:, tmp] = greater_than[:, tmp]
+    gt[:, tmp] = less_than[:, tmp]
+    intersection = gt.clip(min=0.0).max(1) < lt.clip(max=1.0).min(1)
     return intersection.any(1)
 
 
@@ -137,7 +157,7 @@ def streamline2voxels_fast(s, l):
     p0 = s[:-1]
     p1 = s[1:]
     v = ndim_grid(np.trunc(s.min(0)), np.trunc(s.max(0)))
-    return v[intersection_segments_voxels_slow(p0, p1, v, l)]
+    return v[intersection_segments_voxels(p0, p1, v, l)]
 
 
 def ndim_grid(start,stop):
@@ -195,7 +215,6 @@ if __name__ == '__main__':
     p1 = np.array([[3.5, 5.5],
                    [3.5, 3.5],
                    [3.5, 4.5]])
-
 
     # p0 = np.atleast_2d(np.array([3.5, 0.5, 0.5])).T
     # p1 = np.atleast_2d(np.array([0.5, 3.5, 3.5])).T
