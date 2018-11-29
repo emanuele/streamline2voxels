@@ -71,13 +71,13 @@ def intersection_segment_voxels(p0, p1, v, l_2):
     """
     tmp = p1 - p0
     # tmp[tmp == 0.0] = 1.0e-9
-    less_than = (v + l_2 - p0) / tmp
-    greater_than = (v - l_2 - p0) / tmp
-    lt = less_than.copy()
-    gt = greater_than.copy()
-    tmp = (p1 - p0) < 0
-    lt[:, tmp] = greater_than[:, tmp]
-    gt[:, tmp] = less_than[:, tmp]
+    lt = (v + l_2 - p0) / tmp
+    gt = (v - l_2 - p0) / tmp
+    tmp = ((p1 - p0) < 0).T
+    tmp1 = lt[:, tmp].copy()
+    tmp2 = gt[:, tmp].copy()
+    lt[:, tmp] = tmp2
+    gt[:, tmp] = tmp1
     intersection = gt.clip(min=0.0).max(1) < lt.clip(max=1.0).min(1)
     return intersection
 
@@ -88,13 +88,13 @@ def intersection_segments_voxels(p0, p1, v, l_2):
 
     """
     tmp = (p1 - p0).T
-    less_than = ((v + l_2)[:, :, None] - p0.T) / tmp
-    greater_than = ((v - l_2)[:, :, None] - p0.T) / tmp
-    lt = less_than.copy()
-    gt = greater_than.copy()
+    lt = ((v + l_2)[:, :, None] - p0.T) / tmp
+    gt = ((v - l_2)[:, :, None] - p0.T) / tmp
     tmp = ((p1 - p0) < 0).T
-    lt[:, tmp] = greater_than[:, tmp]
-    gt[:, tmp] = less_than[:, tmp]
+    tmp1 = lt[:, tmp].copy()
+    tmp2 = gt[:, tmp].copy()
+    lt[:, tmp] = tmp2
+    gt[:, tmp] = tmp1
     intersection = gt.clip(min=0.0).max(1) < lt.clip(max=1.0).min(1)
     return intersection.any(1)
 
@@ -173,7 +173,7 @@ def ndim_grid(start,stop):
     # List of ranges across all dimensions
     L = [np.arange(start[i]-1,stop[i]+1) for i in range(ndims)]
 
-    # Finally use meshgrid to form all combinations corresponding to all 
+    # Finally use meshgrid to form all combinations corresponding to all
     # dimensions and stack them as M x ndims array
     return np.hstack((np.meshgrid(*L))).swapaxes(0,1).reshape(ndims,-1).T
 
