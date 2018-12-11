@@ -17,6 +17,17 @@ just a slight change to the code, e.g. v <= (x,y,z) < v+l.
 
 import numpy as np
 from scipy.spatial import cKDTree
+from dipy.tracking.streamline import set_number_of_points
+
+
+def unique_rows(matrix):
+    """returns a matrix whose rows are non-duplicated. Possibily in a
+    different order.
+
+    NOTE: recent versions of numpy provides the same functionality
+    (probably better) in numpy.unique().
+    """
+    return np.vstack({tuple(row) for row in matrix})    
 
 
 def ndim_grid(start,stop):
@@ -215,6 +226,20 @@ def streamline2voxels_faster(s, l_2):
     p1 = s[1:]
     v = voxel_superset_cube(s)
     return v[intersection_segments_voxels(p0, p1, v, l_2)]
+
+
+def resample_streamlines_segments(s, nb_points=50):
+    s_resampled = []
+    for segment in zip(s[:-1], s[1:]):
+        segment = np.vstack(segment)
+        segment_resampled = set_number_of_points(segment, nb_points=nb_points)
+        s_resampled.append(segment_resampled)
+
+    return np.vstack(s_resampled)
+
+
+def streamline2voxels_resample(s, l_2=None):
+    return(unique_rows(resample_streamlines_segments(s).round()))
 
 
 if __name__ == '__main__':
